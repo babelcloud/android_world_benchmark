@@ -1,3 +1,20 @@
+# GBOX MCP + Claude Code
+
+Create .env and set :
+GBOX_API_KEY="key"
+ANTHROPIC_API_KEY="key"
+
+In simple_claude_agent.py set:
+self._current_box_id = "box-id"
+
+To run the benchmark
+
+```bash
+python run.py \                                 
+  --suite_family=android_world \
+  --agent_name=simple_claude \
+```
+
 # AndroidWorld
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
