@@ -7,6 +7,11 @@ ANTHROPIC_API_KEY="key"
 In simple_claude_agent.py set:
 self._current_box_id = "box-id"
 
+Add the task-completion mcp server
+```bash
+claude -mcp add task-completion
+```
+
 To run the benchmark
 
 ```bash
