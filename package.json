@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "gbox-sdk": "^0.29.0"
+  }
+}

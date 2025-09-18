@@ -39,6 +39,9 @@ from android_world.agents import t3a
 from android_world.env import env_launcher
 from android_world.env import interface
 
+# GBox and Claude Code integration
+from dotenv import load_dotenv
+from android_world.agents import simple_claude_agent
 logging.set_verbosity(logging.WARNING)
 
 os.environ['GRPC_VERBOSITY'] = 'ERROR'  # Only show errors
@@ -178,6 +181,9 @@ def _get_agent(
   # SeeAct.
   elif _AGENT_NAME.value == 'seeact':
     agent = seeact.SeeAct(env)
+  # Simple Claude Code agent (no GBox dependency)
+  elif _AGENT_NAME.value == 'simple_claude':
+    agent = simple_claude_agent.SimpleClaude(env)
 
   if not agent:
     raise ValueError(f'Unknown agent: {_AGENT_NAME.value}')
