@@ -8,15 +8,23 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("task-completion")
 
 @mcp.tool()
-async def finish_task(success: bool, reason: str) -> str:
+async def answer_action(text: str) -> str:
+    """Provide an answer that will be submitted to the evaluation system.
+
+    Args:
+        text: The answer text
+    """
+    return f"ANSWER_ACTION:{text}"
+
+@mcp.tool()
+async def finish_task(success: bool) -> str:
     """Signal that a task has been completed.
 
     Args:
         success: Whether the task was completed successfully
-        reason: Text explanation of the completion state
     """
     status = "Success" if success else "Failed"
-    return f"Task completion acknowledged: {status} - {reason}"
+    return f"Task completion acknowledged: {status}"
 
 if __name__ == "__main__":
     # Run the server using stdio transport
