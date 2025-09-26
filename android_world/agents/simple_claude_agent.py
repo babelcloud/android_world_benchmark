@@ -30,7 +30,42 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
         self._step_count = 0
         self._current_box_id = "50ad1fa3-3295-4095-b4ec-68600d47d6c6"  # Track current Android box ID
         self._client: ClaudeSDKClient | None = None
-        self._gbox_tool_count = 0  # Track GBox tool calls for sliding window
+
+    def _count_gbox_images_in_file(self, transcript_path: str) -> int:
+        """Count the number of GBox images currently in the JSONL file."""
+        try:
+            with open(transcript_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            gbox_image_count = 0
+            for line in lines:
+                try:
+                    line_data = json.loads(line.strip())
+                    if not isinstance(line_data, dict):
+                        continue
+
+                    # Check if this line contains a GBox tool result with image
+                    has_gbox_image = False
+
+                    # Check toolUseResult[*] (top level)
+                    try:
+                        if line_data.get("toolUseResult"):
+                            for item in line_data["toolUseResult"]:
+                                if item.get("type") == "image":
+                                    has_gbox_image = True
+                                    break
+                    except (KeyError, TypeError, AttributeError):
+                        pass
+
+                    if has_gbox_image:
+                        gbox_image_count += 1
+
+                except json.JSONDecodeError:
+                    continue
+
+            return gbox_image_count
+        except (FileNotFoundError, IOError):
+            return 0
 
     async def _screenshot_hook(self, data: Dict[str, Any], session_id: str | None, context: Any) -> HookJSONOutput:
         """Hook that runs after GBox tool completes with sliding window image replacement."""
@@ -42,10 +77,9 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
         if not transcript_path:
             return HookJSONOutput()
 
-        # Increment our GBox tool counter
-        self._gbox_tool_count += 1
-        current_count = self._gbox_tool_count
-        print(f"   📊 GBox tool count: {current_count}", flush=True)
+        # Count actual GBox images in the JSONL file instead of using in-memory counter
+        current_count = self._count_gbox_images_in_file(transcript_path)
+        print(f"   📊 Total GBox images in file: {current_count}", flush=True)
 
         # Small placeholder image base64
         PLACEHOLDER_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAL4AAAANAQAAAAA/UenrAAAAvUlEQVR42mP8z4AV/GViwAFIl2A4xMfEpMDwv42hgaGDo0O+ScaCQUmxicGGSZFsQirLp4Z1k87bnHac5eCu9MufqcjdJoGJgyGOocOB4UbClwt/K1gUGBgaSx4wMFxgYLr2gonhwQGGHf96DHw6GBh+/UvgUWBgMFjAwiGxgIFhAcMCve0vfjEwMPC8qK9i+N/wooLl/7sJD69q/Pffe5/B6pPzZvY738xv9j36t4GRgM8PQvkfHWAyOHUAALWRQwZjUuFKAAAAAElFTkSuQmCC"
@@ -153,35 +187,55 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
                 "Read", "Write", "Bash",
             ],
             permission_mode="acceptEdits",
-            system_prompt=f"""ANDROID WORLD BENCHMARK AGENT
+            system_prompt=f"""ANDROID WORLD BENCHMARK AGENT — RELENTLESS, VERIFY-THEN-REPORT MODE
 
-You are controlling an Android device to complete benchmark tasks. This is a controlled evaluation environment designed to test agent capabilities.
+You are controlling an Android device to complete benchmark tasks in a controlled evaluation environment.
 
 Current box ID (if any): {self._current_box_id}
 
-=== BENCHMARK CONTEXT ===
-- This is a BENCHMARK: Tasks are intentionally challenging with confusing or non-intuitive UI
-- EVERYTHING IS SOLVABLE: All tasks can be completed using only the tools provided to you
-- OBJECTIVE TRUTH EXISTS: Even if elements seem subjective, take the most standard/objective approach
-- FOLLOW VERBATIM: Task inputs and requirements must be followed exactly as specified
+=== CORE CONTRACT ===
+- EVERYTHING IS SOLVABLE with the tools you have. Assume the required control exists until you have truly exhausted discovery.
+- FOLLOW VERBATIM: Use the exact values and labels provided in the goal. Never substitute "close enough" labels or accept defaults.
+- DO NOT DECLARE SUCCESS until you have in-app evidence the end state matches the goal (totals updated, item appears with correct fields, label text matches, etc.).
+
+=== DISCOVERY HEURISTICS (TASK-AGNOSTIC) ===
+When the needed control/label isn't visible:
+1) Take a screenshot to understand the current state and enumerate visible labels/controls.
+2) Explore systematically:
+   • Vertical exploration: open drawers/menus, scroll lists, expand sections.
+   • Horizontal exploration: treat **chip/button rows and carousels as horizontally scrollable**; perform swipes of short→medium→long distances in BOTH directions, anchored on the control row (center vs edges).
+   • Tabs/filters/overflow (…) menus: open and inspect them.
+3) After any gesture or navigation, **take another screenshot** to confirm the new state before deciding the next action.
+4) If a tool call is denied or a gesture fails (e.g., "invalid coordinates"), **retry with backoff and varied start positions**, then **fallback** to an allowed equivalent (e.g., swipe instead of scroll) rather than stopping.
+
+=== INPUT DISCIPLINE ===
+- Numeric/text fields: enter values exactly; omit symbols if the field already shows the unit. After typing, re-check the field visually to confirm formatting took.
+- Selection chips/radios/categories: do **not** accept defaults. Select the label that exactly matches the requested label. If not visible yet, run the discovery loop above until found or exhausted.
+
+=== PERSISTENCE BUDGET ===
+For each missing control/label perform at least **two full discovery passes**:
+- Pass A: short→medium→long left/right swipes on the suspected row + necessary vertical checks.
+- Pass B: repeat with varied anchors (left/center/right), then inspect overflow/settings/tabs.
+Only after both passes fail may you conclude it is unavailable in this build.
+
+=== VERIFICATION & SELF-CHECK ===
+- In-app confirmation is mandatory: check the relevant screen section (e.g., a "Recent" list, totals, selected tags) to confirm the exact entry/label/amount is present.
+- If any harness/post-state indicator disagrees with what you see, treat it as a fix-needed signal: continue troubleshooting rather than finishing.
+
+=== ERROR & PERMISSION HANDLING ===
+- On transport/UI errors: retry up to 3 times with small backoff; vary gesture distance and anchor. If a permission/tool isn't available, switch to a permitted alternative.
+- Prefer semantic targets (role/label text + position) over raw coordinates whenever possible.
 
 === TOOL PRECISION ===
-When using Android interaction tools, be EXTREMELY DESCRIPTIVE:
-❌ Bad: tap("button")
-✅ Good: tap("Save button in bottom right corner with white text on blue background")
+When tapping/typing, specify **role + label + position** where possible:
+  Good: tap("chip button labeled 'Social' in the category row")
+  Good: tap("SAVE button at bottom of form with white text on blue background")
 
 === APP DISCOVERY ===
 ALWAYS check for apps thoroughly:
 1. Take screenshot to see current state
 2. If target app not visible, swipe up to open app drawer
 3. Look through ALL available apps before concluding an app doesn't exist
-4. Many tasks have apps that aren't immediately visible on home screen
-
-=== UI EXPECTATIONS ===
-- UI elements may appear confusing or contradictory - this is intentional
-- Some tasks are designed to trip you up - stay focused on the exact requirements
-- Interface elements might not behave as expected - adapt and persist
-- No drag/scroll tools provided because they're not needed for these tasks
 
 === TASK COMPLETION ===
 For questions that require a specific answer (like quantities, measurements, or facts):
@@ -189,10 +243,10 @@ For questions that require a specific answer (like quantities, measurements, or 
 2. Then call: finish_task(success=true)
 
 For tasks without specific answers:
-- finish_task(success=true) for successful completion
-- finish_task(success=false) if the task could not be completed
+- Only call finish_task(success=true) **after** you verify on-screen that all required fields/labels/amounts are present and correct.
+- If partial: state what's done vs pending and continue the recovery loop until the persistence budget is exhausted; then finish_task(success=false) with a concise trace of attempts.
 
-The finish_task tool signals to the system that no further steps are needed.""",
+Remember: do not improvise or accept defaults; discover, verify, then report.""",
             model="claude-opus-4-1-20250805",
             hooks={
                 "PostToolUse": [gbox_hook_matcher]
@@ -277,4 +331,3 @@ Please analyze the current Android screen state and take the next appropriate ac
         """Reset the agent."""
         super().reset(go_home)
         self._step_count = 0
-        self._gbox_tool_count = 0  # Reset GBox tool counter for new session
