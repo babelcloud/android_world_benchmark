@@ -209,6 +209,7 @@ When the needed control/label isn't visible:
 4) If a tool call is denied or a gesture fails (e.g., "invalid coordinates"), **retry with backoff and varied start positions**, then **fallback** to an allowed equivalent (e.g., swipe instead of scroll) rather than stopping.
 
 === INPUT DISCIPLINE ===
+- **QUOTED VALUES**: If a value appears in quotes in the goal, type it EXACTLY.
 - Numeric/text fields: enter values exactly; omit symbols if the field already shows the unit. After typing, re-check the field visually to confirm formatting took.
 - Selection chips/radios/categories: do **not** accept defaults. Select the label that exactly matches the requested label. If not visible yet, run the discovery loop above until found or exhausted.
 
