@@ -30,10 +30,10 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
         self._step_count = 0
         self._current_box_id = "50ad1fa3-3295-4095-b4ec-68600d47d6c6"  # Track current Android box ID
         self._client: ClaudeSDKClient | None = None
+        self._gbox_tool_count = 0  # Track GBox tool calls for sliding window
 
     async def _screenshot_hook(self, data: Dict[str, Any], session_id: str | None, context: Any) -> HookJSONOutput:
-        """Hook that runs after GBox tool completes to replace large images with placeholders."""
-        # Debug: Print what we're receiving
+        """Hook that runs after GBox tool completes with sliding window image replacement."""
         print(f"\n🔧 [Hook] Received data type: {type(data)}, session_id: {session_id}", flush=True)
         transcript_path = data.get('transcript_path')
         tool_name = data.get('tool_name')
@@ -42,63 +42,95 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
         if not transcript_path:
             return HookJSONOutput()
 
+        # Increment our GBox tool counter
+        self._gbox_tool_count += 1
+        current_count = self._gbox_tool_count
+        print(f"   📊 GBox tool count: {current_count}", flush=True)
+
         # Small placeholder image base64
-        PLACEHOLDER_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAL4AAAANAQAAAAA/UenrAAAAvUlEQVR42mP8z4AV/GViwAFIl2A4xMfEpMDwv42hgaGDo0O+ScaCQUmxicGGSVFsQirLp4Z1k87bnHac5eCu9MufqcjdJoGJgyGOocOB4UbClwt/K1gUGBgaSx4wMFxgYLr2gonhwQGGHf96DHw6GBh+/UvgUWBgMFjAwiGxgIFhAcMCve0vfjEwMPC8qK9i+N/wooLl/7sJD69q/Pffe5/B6pPzZvY738xv9j36t4GRgM8PQvkfHWAyOHUAALWRQwZjUuFKAAAAAElFTkSuQmCC"
+        PLACEHOLDER_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAL4AAAANAQAAAAA/UenrAAAAvUlEQVR42mP8z4AV/GViwAFIl2A4xMfEpMDwv42hgaGDo0O+ScaCQUmxicGGSZFsQirLp4Z1k87bnHac5eCu9MufqcjdJoGJgyGOocOB4UbClwt/K1gUGBgaSx4wMFxgYLr2gonhwQGGHf96DHw6GBh+/UvgUWBgMFjAwiGxgIFhAcMCve0vfjEwMPC8qK9i+N/wooLl/7sJD69q/Pffe5/B6pPzZvY738xv9j36t4GRgM8PQvkfHWAyOHUAALWRQwZjUuFKAAAAAElFTkSuQmCC"
 
-        # Read and process JSONL file
-        with open(transcript_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        # If we have >= 10 tools, replace the image from (current_count - 10) position
+        if current_count >= 10:
+            target_position = current_count - 10  # 0-indexed position to replace
+            print(f"   🎯 Replacing image at position {target_position} (sliding window)", flush=True)
 
-        modified = False
-        for i, line in enumerate(lines):
-            try:
-                line_data = json.loads(line.strip())
+            # Read and process JSONL file
+            with open(transcript_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
 
-                # Ensure line_data is a dictionary
-                if not isinstance(line_data, dict):
+            # Find the GBox tool call at target_position and replace its image
+            gbox_tool_index = -1
+            modified = False
+
+            for i, line in enumerate(lines):
+                try:
+                    line_data = json.loads(line.strip())
+                    if not isinstance(line_data, dict):
+                        continue
+
+                    # Check if this line contains a GBox tool result with image
+                    has_gbox_image = False
+
+                    #toolUseResult[*] (top level)
+                    try:
+                        if line_data.get("toolUseResult"):
+                            for item in line_data["toolUseResult"]:
+                                if item.get("type") == "image":
+                                    has_gbox_image = True
+                                    break
+                    except (KeyError, TypeError, AttributeError):
+                        pass
+
+                    # If this line has a GBox image, increment our index
+                    if has_gbox_image:
+                        gbox_tool_index += 1
+
+                        # If this is the target position, replace the image
+                        if gbox_tool_index == target_position:
+                            print(f"   🔄 Found target at line {i}, replacing image", flush=True)
+                            line_modified = False
+
+                            # Replace in Location 1
+                            try:
+                                if (line_data.get("message", {}).get("content") and
+                                    len(line_data["message"]["content"]) > 0 and
+                                    line_data["message"]["content"][0].get("type") == "tool_result"):
+
+                                    tool_result_content = line_data["message"]["content"][0].get("content", [])
+                                    for item in tool_result_content:
+                                        if (item.get("type") == "image" and
+                                            item.get("source", {}).get("data")):
+                                            item["source"]["data"] = PLACEHOLDER_IMAGE
+                                            line_modified = True
+                            except (KeyError, TypeError, AttributeError):
+                                pass
+
+                            # Replace in Location 2
+                            try:
+                                if line_data.get("toolUseResult"):
+                                    for item in line_data["toolUseResult"]:
+                                        if (item.get("type") == "image" and
+                                            item.get("source", {}).get("data")):
+                                            item["source"]["data"] = PLACEHOLDER_IMAGE
+                                            line_modified = True
+                            except (KeyError, TypeError, AttributeError):
+                                pass
+
+                            if line_modified:
+                                lines[i] = json.dumps(line_data, separators=(',', ':')) + '\n'
+                                modified = True
+                                print(f"   ✅ Replaced image at position {target_position}", flush=True)
+                                break  # Found and replaced, exit loop
+
+                except json.JSONDecodeError:
                     continue
 
-                line_modified = False
-
-                # Location 1: message.content[0].content[*] (tool result)
-                try:
-                    if (line_data.get("message", {}).get("content") and
-                        len(line_data["message"]["content"]) > 0 and
-                        line_data["message"]["content"][0].get("type") == "tool_result"):
-
-                        tool_result_content = line_data["message"]["content"][0].get("content", [])
-                        for item in tool_result_content:
-                            if (item.get("type") == "image" and
-                                item.get("source", {}).get("data") and
-                                len(item["source"]["data"]) > 1000):
-                                item["source"]["data"] = PLACEHOLDER_IMAGE
-                                line_modified = True
-                except (KeyError, TypeError, AttributeError):
-                    pass  # Skip if structure is unexpected
-
-                # Location 2: toolUseResult[*] (top level)
-                try:
-                    if line_data.get("toolUseResult"):
-                        for item in line_data["toolUseResult"]:
-                            if (item.get("type") == "image" and
-                                item.get("source", {}).get("data") and
-                                len(item["source"]["data"]) > 1000):
-                                item["source"]["data"] = PLACEHOLDER_IMAGE
-                                line_modified = True
-                except (KeyError, TypeError, AttributeError):
-                    pass  # Skip if structure is unexpected
-
-                if line_modified:
-                    lines[i] = json.dumps(line_data, separators=(',', ':')) + '\n'
-                    modified = True
-
-            except json.JSONDecodeError:
-                continue
-
-        if modified:
-            with open(transcript_path, 'w', encoding='utf-8') as f:
-                f.writelines(lines)
-            print(f"   ✅ Memory optimization completed", flush=True)
+            if modified:
+                with open(transcript_path, 'w', encoding='utf-8') as f:
+                    f.writelines(lines)
+        else:
+            print(f"   ⏳ Keeping all images (count < 10)", flush=True)
 
         return HookJSONOutput()
 
@@ -116,24 +148,42 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
                 "mcp__gbox-android__swipe",
                 "mcp__gbox-android__tap",
                 "mcp__gbox-android__type",
-                "mcp__gbox-android__scroll",
                 "mcp__task-completion__answer_action",
                 "mcp__task-completion__finish_task",
                 "Read", "Write", "Bash",
             ],
             permission_mode="acceptEdits",
-            system_prompt=f"""You are controlling an Android device to accomplish specific goals.
+            system_prompt=f"""ANDROID WORLD BENCHMARK AGENT
 
-You have access to tools that can interact with the Android device.
+You are controlling an Android device to complete benchmark tasks. This is a controlled evaluation environment designed to test agent capabilities.
 
 Current box ID (if any): {self._current_box_id}
 
-Always start by taking a screenshot to see the current state, then proceed with appropriate actions to accomplish the given goal.
+=== BENCHMARK CONTEXT ===
+- This is a BENCHMARK: Tasks are intentionally challenging with confusing or non-intuitive UI
+- EVERYTHING IS SOLVABLE: All tasks can be completed using only the tools provided to you
+- OBJECTIVE TRUTH EXISTS: Even if elements seem subjective, take the most standard/objective approach
+- FOLLOW VERBATIM: Task inputs and requirements must be followed exactly as specified
 
-Be methodical and take one action at a time. Explain your reasoning for each action.
+=== TOOL PRECISION ===
+When using Android interaction tools, be EXTREMELY DESCRIPTIVE:
+❌ Bad: tap("button")
+✅ Good: tap("Save button in bottom right corner with white text on blue background")
 
-IMPORTANT: When you have successfully completed the task:
+=== APP DISCOVERY ===
+ALWAYS check for apps thoroughly:
+1. Take screenshot to see current state
+2. If target app not visible, swipe up to open app drawer
+3. Look through ALL available apps before concluding an app doesn't exist
+4. Many tasks have apps that aren't immediately visible on home screen
 
+=== UI EXPECTATIONS ===
+- UI elements may appear confusing or contradictory - this is intentional
+- Some tasks are designed to trip you up - stay focused on the exact requirements
+- Interface elements might not behave as expected - adapt and persist
+- No drag/scroll tools provided because they're not needed for these tasks
+
+=== TASK COMPLETION ===
 For questions that require a specific answer (like quantities, measurements, or facts):
 1. First call: answer_action(text="the exact answer requested")
 2. Then call: finish_task(success=true)
@@ -143,7 +193,7 @@ For tasks without specific answers:
 - finish_task(success=false) if the task could not be completed
 
 The finish_task tool signals to the system that no further steps are needed.""",
-            model="claude-sonnet-4-20250514",
+            model="claude-opus-4-1-20250805",
             hooks={
                 "PostToolUse": [gbox_hook_matcher]
             }
@@ -227,3 +277,4 @@ Please analyze the current Android screen state and take the next appropriate ac
         """Reset the agent."""
         super().reset(go_home)
         self._step_count = 0
+        self._gbox_tool_count = 0  # Reset GBox tool counter for new session
