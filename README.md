@@ -9,7 +9,8 @@ self._current_box_id = "box-id"
 
 Add the task-completion mcp server
 ```bash
-claude -mcp add task-completion
+claude mcp add task-completion python
+  /path/android_world_benchmark/task_completion_server.py
 ```
 
 To run the benchmark
