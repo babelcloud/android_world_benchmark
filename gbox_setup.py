@@ -1,29 +1,25 @@
-import os
-from dotenv import load_dotenv
 from gbox_sdk import GboxSDK
+import asyncio
 
-# Load environment variables from .env file
-load_dotenv()
 
-def main():
-    api_key = os.getenv("GBOX_API_KEY")
-    gbox = GboxSDK(api_key=api_key)
+async def main():
+    try:
+        gbox = GboxSDK(
+            api_key="gbox_5qHk4HzasE9QCk7qm0kCwHulCSfZ5FnyKgspculb9HGdzd1HY3",
+            base_url="http://gbox.localhost:2080/api/v1",
+        )
+        # Initialize Android box (default lifecycle: 5 minutes, will be automatically released after 5 minutes)
+        print("Initializing android box...")
+        my_android_box = await gbox.create(
+            type="android",
+            config={"expires_in": "5m"}
+        )
+        print("Device created:", my_android_box.id)
+        return my_android_box
+    except Exception as e:
+        print(f"Error creating Android box: {e}")
+        return None
 
-    box = gbox.create(
-        type="android",
-        config={
-            "deviceType": "physical",
-            "labels":{
-                "gbox.ai/device-id": "EMULATOR36X1X9X0-usb" # Replace with your device ID
-            }
-        }
-    )
-
-    print(f"Android box created: {box.data.id}")
-
-    live_view = box.live_view()
-
-    print(f"Live view URL: {live_view.url}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

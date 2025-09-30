@@ -7,12 +7,12 @@ from android_world.agents import base_agent
 from android_world.env import interface
 from android_world.env import json_action
 
-from claude_code_sdk import (
-    ClaudeSDKClient, ClaudeCodeOptions, HookMatcher,
+from claude_agent_sdk import (
+    ClaudeSDKClient, ClaudeAgentOptions, HookMatcher,
     AssistantMessage, ResultMessage,
     TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
 )
-from claude_code_sdk.types import HookJSONOutput
+from claude_agent_sdk.types import HookJSONOutput
 import json
 import os
 
@@ -28,7 +28,7 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
     ):
         super().__init__(env, name, transition_pause)
         self._step_count = 0
-        self._current_box_id = "50ad1fa3-3295-4095-b4ec-68600d47d6c6"  # Track current Android box ID
+        self._current_box_id = "235bed4d-f606-4335-8cbc-252115048d01"  # Track current Android box ID
         self._client: ClaudeSDKClient | None = None
 
     def _count_gbox_images_in_file(self, transcript_path: str) -> int:
@@ -168,17 +168,23 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
 
         return HookJSONOutput()
 
-    def _create_options(self) -> ClaudeCodeOptions:
-        """Create ClaudeCodeOptions with hooks for memory management."""
+    def _create_options(self) -> ClaudeAgentOptions:
+        """Create ClaudeAgentOptions with hooks for memory management."""
         # Define PostToolUse hook for ALL GBox tools (they all return screenshots)
         gbox_hook_matcher = HookMatcher(
             matcher="mcp__gbox-android__.*",
             hooks=[self._screenshot_hook]
         )
 
-        return ClaudeCodeOptions(
+        return ClaudeAgentOptions(
+            setting_sources=["user", "project", "local"],
             allowed_tools=[
                 "mcp__gbox-android__screenshot",
+                "mcp__gbox-android__wait",
+                "mcp__gbox-android__open_app",
+                "mcp__gbox-android__close_app",
+                "mcp__gbox-android__long_press",
+                "mcp__gbox-android__press_button",
                 "mcp__gbox-android__swipe",
                 "mcp__gbox-android__tap",
                 "mcp__gbox-android__type",
@@ -248,58 +254,98 @@ For tasks without specific answers:
 - If partial: state what's done vs pending and continue the recovery loop until the persistence budget is exhausted; then finish_task(success=false) with a concise trace of attempts.
 
 Remember: do not improvise or accept defaults; discover, verify, then report.""",
-            model="claude-opus-4-1-20250805",
+            model="claude-sonnet-4-5-20250929",
             hooks={
                 "PostToolUse": [gbox_hook_matcher]
             }
         )
 
-    async def _process_claude_query(self, query_text: str) -> tuple[str, bool]:
-        """Process a query with Claude using ClaudeSDKClient with hooks."""
+    async def _process_claude_query(self, query_text: str, use_sonnet_4: bool = False) -> tuple[str, bool, bool]:
+        """Process a query with Claude using ClaudeSDKClient with hooks.
+
+        Args:
+            query_text: The query to send to Claude
+            use_sonnet_4: If True, use Sonnet 4 instead of Sonnet 4.5
+
+        Returns:
+            tuple: (response_text, is_done, has_error)
+        """
         response_text = ""
         is_done = False
+        has_error = False
 
         # Create client with hooks
         options = self._create_options()
 
-        print(f"\n[Claude Agent Step {self._step_count}] Starting query...", flush=True)
+        # Override model if using fallback
+        if use_sonnet_4:
+            options.model = "claude-sonnet-4-20250514"
+            print(f"\n[Claude Agent Step {self._step_count}] Starting query with FALLBACK model: {options.model}...", flush=True)
+        else:
+            print(f"\n[Claude Agent Step {self._step_count}] Starting query with model: {options.model}...", flush=True)
 
-        async with ClaudeSDKClient(options) as client:
-            await client.query(query_text)
+        try:
+            async with ClaudeSDKClient(options) as client:
+                await client.query(query_text)
 
-            async for message in client.receive_response():
-                # Process any message that has content blocks
-                if hasattr(message, 'content') and isinstance(message.content, list):
-                    for block in message.content:
-                        if isinstance(block, ThinkingBlock):
-                            print(block.thinking, end="", flush=True)
-                        elif isinstance(block, TextBlock):
-                            response_text += block.text
-                            print(f"🤖 {block.text}", end="", flush=True)
-                        elif isinstance(block, ToolUseBlock):
-                            if block.name == "mcp__task-completion__finish_task":
-                                is_done = True
-                            elif block.name == "mcp__task-completion__answer_action":
-                                # Extract answer text from tool input and create JSONAction
-                                answer_text = block.input.get('text', '') if hasattr(block, 'input') and block.input else ''
-                                if answer_text:
-                                    answer_action = json_action.JSONAction(
-                                        action_type=json_action.ANSWER,
-                                        text=answer_text
-                                    )
-                                    self.env.execute_action(answer_action)
-                                    print(f"\n🔧 [ANSWER] Executed answer action: {answer_text}", flush=True)
-                            print(f"\n🔧 [ToolUse] {block.name} input={block.input}", flush=True)
-                        elif isinstance(block, ToolResultBlock):
-                            status = "error" if block.is_error else "ok"
-                            content_str = str(block.content)
-                            if "data:image" not in content_str and len(content_str) < 500:
-                                print(f"\n✅ [ToolResult:{status}] {block.content}", flush=True)
-                elif isinstance(message, ResultMessage):
-                    print(f"\n[Result] turns={message.num_turns} duration_ms={message.duration_ms}", flush=True)
-                    break
+                async for message in client.receive_response():
+                    # Check for Usage Policy violation via isApiErrorMessage flag
+                    if hasattr(message, 'isApiErrorMessage') and message.isApiErrorMessage:
+                        print(f"\n🚨 [USAGE POLICY VIOLATION] Detected - triggering fallback", flush=True)
+                        has_error = True
+                        is_done = True
+                        # Extract error message
+                        if hasattr(message, 'message') and hasattr(message.message, 'content'):
+                            for block in message.message.content:
+                                if isinstance(block, dict) and block.get('type') == 'text':
+                                    response_text = block.get('text', '')
+                                    print(f"   {response_text[:200]}", flush=True)
+                        break  # Exit loop immediately - no more messages coming
 
-        return response_text, is_done
+                    # Process any message that has content blocks
+                    if hasattr(message, 'content') and isinstance(message.content, list):
+                        for block in message.content:
+                            if isinstance(block, ThinkingBlock):
+                                print(block.thinking, end="", flush=True)
+                            elif isinstance(block, TextBlock):
+                                response_text += block.text
+                                print(f"🤖 {block.text}", end="", flush=True)
+
+                                # Also check TextBlock for API Error message
+                                if "API Error: Claude Code is unable to respond" in block.text or "appears to violate our Usage Policy" in block.text:
+                                    print(f"\n🚨 [USAGE POLICY IN TEXT] Detected - triggering fallback", flush=True)
+                                    has_error = True
+                                    is_done = True
+
+                            elif isinstance(block, ToolUseBlock):
+                                if block.name == "mcp__task-completion__finish_task":
+                                    is_done = True
+                                elif block.name == "mcp__task-completion__answer_action":
+                                    # Extract answer text from tool input and create JSONAction
+                                    answer_text = block.input.get('text', '') if hasattr(block, 'input') and block.input else ''
+                                    if answer_text:
+                                        answer_action = json_action.JSONAction(
+                                            action_type=json_action.ANSWER,
+                                            text=answer_text
+                                        )
+                                        self.env.execute_action(answer_action)
+                                        print(f"\n🔧 [ANSWER] Executed answer action: {answer_text}", flush=True)
+                                print(f"\n🔧 [ToolUse] {block.name} input={block.input}", flush=True)
+                            elif isinstance(block, ToolResultBlock):
+                                status = "error" if block.is_error else "ok"
+                                content_str = str(block.content)
+                                if "data:image" not in content_str and len(content_str) < 500:
+                                    print(f"\n✅ [ToolResult:{status}] {block.content}", flush=True)
+                    elif isinstance(message, ResultMessage):
+                        print(f"\n[Result] turns={message.num_turns} duration_ms={message.duration_ms}", flush=True)
+                        break
+        except Exception as e:
+            error_msg = str(e)
+            print(f"\n❌ [ERROR] Exception during Claude query: {error_msg}", flush=True)
+            # Re-raise - we don't handle exceptions here, only isApiErrorMessage
+            raise
+
+        return response_text, is_done, has_error
 
     def step(self, goal: str) -> base_agent.AgentInteractionResult:
         """Perform a single step with Claude."""
@@ -314,10 +360,16 @@ Remember: do not improvise or accept defaults; discover, verify, then report."""
 
 Current step: {self._step_count}
 Please analyze the current Android screen state and take the next appropriate action to accomplish the goal. If you need to see the screen, use available tools to take a screenshot first."""
-        claude_output, is_done = asyncio.run(self._process_claude_query(query))
+        claude_output, is_done, has_error = asyncio.run(self._process_claude_query(query))
+
+        # If Usage Policy violation detected, retry with Sonnet 4
+        if has_error:
+            print(f"\n🔄 [FALLBACK] Retrying with Sonnet 4...", flush=True)
+            # Temporarily switch to Sonnet 4 for this query
+            claude_output, is_done, has_error = asyncio.run(self._process_claude_query(query, use_sonnet_4=True))
 
         # Return result
-        print(f"\n🏁 [STEP END] Step {self._step_count} completed. Done: {is_done}", flush=True)
+        print(f"\n🏁 [STEP END] Step {self._step_count} completed. Done: {is_done}, Error: {has_error}", flush=True)
 
         return base_agent.AgentInteractionResult(
             done=is_done,
@@ -325,6 +377,7 @@ Please analyze the current Android screen state and take the next appropriate ac
                 'agent_output': claude_output,
                 'step_count': self._step_count,
                 'goal': goal,
+                'error': has_error,
             }
         )
 

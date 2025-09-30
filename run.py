@@ -159,6 +159,7 @@ def _get_agent(
 ) -> base_agent.EnvironmentInteractingAgent:
   """Gets agent."""
   print('Initializing agent...')
+  print(f'DEBUG: Agent name is: {_AGENT_NAME.value}')
   agent = None
   if _AGENT_NAME.value == 'human_agent':
     agent = human_agent.HumanAgent(env)

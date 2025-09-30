@@ -18,6 +18,6 @@ pytest
 requests
 tenacity
 termcolor
-claude-code-sdk
+claude-agent-sdk
 python-dotenv
 gbox-sdk
