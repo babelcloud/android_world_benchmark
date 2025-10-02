@@ -8,17 +8,16 @@ from android_world.env import interface
 from android_world.env import json_action
 
 from claude_agent_sdk import (
-    ClaudeSDKClient, ClaudeAgentOptions, HookMatcher,
+    ClaudeSDKClient, ClaudeAgentOptions,
     AssistantMessage, ResultMessage,
     TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
 )
-from claude_agent_sdk.types import HookJSONOutput
 import json
 import os
 
 
 class SimpleClaude(base_agent.EnvironmentInteractingAgent):
-    """Simple agent using ClaudeSDKClient with hooks for memory management."""
+    """Simple agent using ClaudeSDKClient."""
 
     def __init__(
         self,
@@ -30,151 +29,16 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
         self._step_count = 0
         self._current_box_id = "235bed4d-f606-4335-8cbc-252115048d01"  # Track current Android box ID
         self._client: ClaudeSDKClient | None = None
+        self._session_id: str | None = None  # Track session ID for resuming
 
-    def _count_gbox_images_in_file(self, transcript_path: str) -> int:
-        """Count the number of GBox images currently in the JSONL file."""
-        try:
-            with open(transcript_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-
-            gbox_image_count = 0
-            for line in lines:
-                try:
-                    line_data = json.loads(line.strip())
-                    if not isinstance(line_data, dict):
-                        continue
-
-                    # Check if this line contains a GBox tool result with image
-                    has_gbox_image = False
-
-                    # Check toolUseResult[*] (top level)
-                    try:
-                        if line_data.get("toolUseResult"):
-                            for item in line_data["toolUseResult"]:
-                                if item.get("type") == "image":
-                                    has_gbox_image = True
-                                    break
-                    except (KeyError, TypeError, AttributeError):
-                        pass
-
-                    if has_gbox_image:
-                        gbox_image_count += 1
-
-                except json.JSONDecodeError:
-                    continue
-
-            return gbox_image_count
-        except (FileNotFoundError, IOError):
-            return 0
-
-    async def _screenshot_hook(self, data: Dict[str, Any], session_id: str | None, context: Any) -> HookJSONOutput:
-        """Hook that runs after GBox tool completes with sliding window image replacement."""
-        print(f"\n🔧 [Hook] Received data type: {type(data)}, session_id: {session_id}", flush=True)
-        transcript_path = data.get('transcript_path')
-        tool_name = data.get('tool_name')
-
-        print(f"   🔧 Tool: {tool_name}, Transcript: {transcript_path}", flush=True)
-        if not transcript_path:
-            return HookJSONOutput()
-
-        # Count actual GBox images in the JSONL file instead of using in-memory counter
-        current_count = self._count_gbox_images_in_file(transcript_path)
-        print(f"   📊 Total GBox images in file: {current_count}", flush=True)
-
-        # Small placeholder image base64
-        PLACEHOLDER_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAL4AAAANAQAAAAA/UenrAAAAvUlEQVR42mP8z4AV/GViwAFIl2A4xMfEpMDwv42hgaGDo0O+ScaCQUmxicGGSZFsQirLp4Z1k87bnHac5eCu9MufqcjdJoGJgyGOocOB4UbClwt/K1gUGBgaSx4wMFxgYLr2gonhwQGGHf96DHw6GBh+/UvgUWBgMFjAwiGxgIFhAcMCve0vfjEwMPC8qK9i+N/wooLl/7sJD69q/Pffe5/B6pPzZvY738xv9j36t4GRgM8PQvkfHWAyOHUAALWRQwZjUuFKAAAAAElFTkSuQmCC"
-
-        # If we have >= 10 tools, replace the image from (current_count - 10) position
-        if current_count >= 10:
-            target_position = current_count - 10  # 0-indexed position to replace
-            print(f"   🎯 Replacing image at position {target_position} (sliding window)", flush=True)
-
-            # Read and process JSONL file
-            with open(transcript_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-
-            # Find the GBox tool call at target_position and replace its image
-            gbox_tool_index = -1
-            modified = False
-
-            for i, line in enumerate(lines):
-                try:
-                    line_data = json.loads(line.strip())
-                    if not isinstance(line_data, dict):
-                        continue
-
-                    # Check if this line contains a GBox tool result with image
-                    has_gbox_image = False
-
-                    #toolUseResult[*] (top level)
-                    try:
-                        if line_data.get("toolUseResult"):
-                            for item in line_data["toolUseResult"]:
-                                if item.get("type") == "image":
-                                    has_gbox_image = True
-                                    break
-                    except (KeyError, TypeError, AttributeError):
-                        pass
-
-                    # If this line has a GBox image, increment our index
-                    if has_gbox_image:
-                        gbox_tool_index += 1
-
-                        # If this is the target position, replace the image
-                        if gbox_tool_index == target_position:
-                            print(f"   🔄 Found target at line {i}, replacing image", flush=True)
-                            line_modified = False
-
-                            # Replace in Location 1
-                            try:
-                                if (line_data.get("message", {}).get("content") and
-                                    len(line_data["message"]["content"]) > 0 and
-                                    line_data["message"]["content"][0].get("type") == "tool_result"):
-
-                                    tool_result_content = line_data["message"]["content"][0].get("content", [])
-                                    for item in tool_result_content:
-                                        if (item.get("type") == "image" and
-                                            item.get("source", {}).get("data")):
-                                            item["source"]["data"] = PLACEHOLDER_IMAGE
-                                            line_modified = True
-                            except (KeyError, TypeError, AttributeError):
-                                pass
-
-                            # Replace in Location 2
-                            try:
-                                if line_data.get("toolUseResult"):
-                                    for item in line_data["toolUseResult"]:
-                                        if (item.get("type") == "image" and
-                                            item.get("source", {}).get("data")):
-                                            item["source"]["data"] = PLACEHOLDER_IMAGE
-                                            line_modified = True
-                            except (KeyError, TypeError, AttributeError):
-                                pass
-
-                            if line_modified:
-                                lines[i] = json.dumps(line_data, separators=(',', ':')) + '\n'
-                                modified = True
-                                print(f"   ✅ Replaced image at position {target_position}", flush=True)
-                                break  # Found and replaced, exit loop
-
-                except json.JSONDecodeError:
-                    continue
-
-            if modified:
-                with open(transcript_path, 'w', encoding='utf-8') as f:
-                    f.writelines(lines)
-        else:
-            print(f"   ⏳ Keeping all images (count < 10)", flush=True)
-
-        return HookJSONOutput()
 
     def _create_options(self) -> ClaudeAgentOptions:
-        """Create ClaudeAgentOptions with hooks for memory management."""
-        # Define PostToolUse hook for ALL GBox tools (they all return screenshots)
-        gbox_hook_matcher = HookMatcher(
-            matcher="mcp__gbox-android__.*",
-            hooks=[self._screenshot_hook]
-        )
+        """Create ClaudeAgentOptions with optional session resuming."""
+        # Resume from previous session if we have a session_id
+        resume_session = None
+        if self._session_id:
+            resume_session = self._session_id
+            print(f"[Session Resume] Resuming from session: {self._session_id}", flush=True)
 
         return ClaudeAgentOptions(
             setting_sources=["user", "project", "local"],
@@ -193,6 +57,7 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
                 "Read", "Write", "Bash",
             ],
             permission_mode="acceptEdits",
+            resume=resume_session,
             system_prompt=f"""ANDROID WORLD BENCHMARK AGENT — RELENTLESS, VERIFY-THEN-REPORT MODE
 
 You are controlling an Android device to complete benchmark tasks in a controlled evaluation environment.
@@ -254,14 +119,11 @@ For tasks without specific answers:
 - If partial: state what's done vs pending and continue the recovery loop until the persistence budget is exhausted; then finish_task(success=false) with a concise trace of attempts.
 
 Remember: do not improvise or accept defaults; discover, verify, then report.""",
-            model="claude-sonnet-4-5-20250929",
-            hooks={
-                "PostToolUse": [gbox_hook_matcher]
-            }
+            model="claude-sonnet-4-5-20250929"
         )
 
     async def _process_claude_query(self, query_text: str, use_sonnet_4: bool = False) -> tuple[str, bool, bool]:
-        """Process a query with Claude using ClaudeSDKClient with hooks.
+        """Process a query with Claude using ClaudeSDKClient.
 
         Args:
             query_text: The query to send to Claude
@@ -274,34 +136,21 @@ Remember: do not improvise or accept defaults; discover, verify, then report."""
         is_done = False
         has_error = False
 
-        # Create client with hooks
+        # Create client
         options = self._create_options()
 
         # Override model if using fallback
         if use_sonnet_4:
             options.model = "claude-sonnet-4-20250514"
-            print(f"\n[Claude Agent Step {self._step_count}] Starting query with FALLBACK model: {options.model}...", flush=True)
+            print(f"\n[Claude Agent] Starting query with FALLBACK model: {options.model}...", flush=True)
         else:
-            print(f"\n[Claude Agent Step {self._step_count}] Starting query with model: {options.model}...", flush=True)
+            print(f"\n[Claude Agent] Starting query with model: {options.model}...", flush=True)
 
         try:
             async with ClaudeSDKClient(options) as client:
                 await client.query(query_text)
 
                 async for message in client.receive_response():
-                    # Check for Usage Policy violation via isApiErrorMessage flag
-                    if hasattr(message, 'isApiErrorMessage') and message.isApiErrorMessage:
-                        print(f"\n🚨 [USAGE POLICY VIOLATION] Detected - triggering fallback", flush=True)
-                        has_error = True
-                        is_done = True
-                        # Extract error message
-                        if hasattr(message, 'message') and hasattr(message.message, 'content'):
-                            for block in message.message.content:
-                                if isinstance(block, dict) and block.get('type') == 'text':
-                                    response_text = block.get('text', '')
-                                    print(f"   {response_text[:200]}", flush=True)
-                        break  # Exit loop immediately - no more messages coming
-
                     # Process any message that has content blocks
                     if hasattr(message, 'content') and isinstance(message.content, list):
                         for block in message.content:
@@ -309,14 +158,7 @@ Remember: do not improvise or accept defaults; discover, verify, then report."""
                                 print(block.thinking, end="", flush=True)
                             elif isinstance(block, TextBlock):
                                 response_text += block.text
-                                print(f"🤖 {block.text}", end="", flush=True)
-
-                                # Also check TextBlock for API Error message
-                                if "API Error: Claude Code is unable to respond" in block.text or "appears to violate our Usage Policy" in block.text:
-                                    print(f"\n🚨 [USAGE POLICY IN TEXT] Detected - triggering fallback", flush=True)
-                                    has_error = True
-                                    is_done = True
-
+                                print(f"{block.text}", end="", flush=True)
                             elif isinstance(block, ToolUseBlock):
                                 if block.name == "mcp__task-completion__finish_task":
                                     is_done = True
@@ -337,6 +179,17 @@ Remember: do not improvise or accept defaults; discover, verify, then report."""
                                 if "data:image" not in content_str and len(content_str) < 500:
                                     print(f"\n✅ [ToolResult:{status}] {block.content}", flush=True)
                     elif isinstance(message, ResultMessage):
+                        # Capture session ID for resuming in next step
+                        if hasattr(message, 'session_id') and message.session_id:
+                            self._session_id = message.session_id
+                            print(f"\n[Session] Captured session ID: {self._session_id}", flush=True)
+
+                        if message.is_error:
+                            error_result = str(message.result)[:200] if hasattr(message, 'result') else 'No result message'
+                            print(f"\n🚨 [SDK Error] {error_result}", flush=True)
+                            has_error = True
+                            is_done = True
+                            break
                         print(f"\n[Result] turns={message.num_turns} duration_ms={message.duration_ms}", flush=True)
                         break
         except Exception as e:
@@ -384,4 +237,7 @@ Please analyze the current Android screen state and take the next appropriate ac
     def reset(self, go_home: bool = False) -> None:
         """Reset the agent."""
         super().reset(go_home)
+        # Hide the coordinates/pointer visualization on screen
+        self.env.hide_automation_ui()
         self._step_count = 0
+        self._session_id = None  # Clear session ID on reset
