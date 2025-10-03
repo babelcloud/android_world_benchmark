@@ -1,11 +1,11 @@
 ## Introduction
 
-At Gbox, we aimed to demonstrate that providing the right tools can significantly improve the reliability of autonomous agents. By integrating Claude Code with the Gbox MCP, our system achieved an 88% task success rate on AndroidWorld, a benchmark consisting of 116 mobile automation tasks across commonly used Android applications. AndroidWorld serves as a rigorous validation environment, and these results illustrate how Gbox enables agents to move beyond brittle prototypes toward robust, production-ready automation systems.
+At GBOX, we aimed to demonstrate that providing the right tools can significantly improve the reliability of autonomous agents. By integrating Claude Code with the GBOX MCP, our system achieved an 88% task success rate on AndroidWorld, a benchmark consisting of 116 mobile automation tasks across commonly used Android applications. AndroidWorld serves as a rigorous validation environment, and these results illustrate how GBOX enables agents to move beyond brittle prototypes toward robust, production-ready automation systems.
 
-## Why Gbox Made the Difference
+## Why GBOX Made the Difference
 
-Traditional Android automation often relies on coordinate-based tapping (e.g., tap(532, 847)), an approach that is highly sensitive to variations in screen sizes, themes, or app updates. [Gbox](https://docs.gbox.ai/api-reference/box/create-android-box)
- supports both coordinate-based input and semantic, natural-language control, giving developers flexibility to choose the modality best suited to the task. For the AndroidWorld benchmark, the Gbox MCP utilized the natural-language mode, enabling agents to reference UI elements by role or label rather than by pixel location. This abstraction reduced brittleness and improved generalization across diverse environments.
+Traditional Android automation often relies on coordinate-based tapping (e.g., tap(532, 847)), an approach that is highly sensitive to variations in screen sizes, themes, or app updates. [GBOX](https://docs.gbox.ai/api-reference/box/create-android-box)
+ supports both coordinate-based input and semantic, natural-language control, giving developers flexibility to choose the modality best suited to the task. For the AndroidWorld benchmark, the GBOX MCP utilized the natural-language mode, enabling agents to reference UI elements by role or label rather than by pixel location. This abstraction reduced brittleness and improved generalization across diverse environments.
 
 tap(target="SAVE button at bottom of form")  
 type(content="Meeting tomorrow at 3pm")  
@@ -28,7 +28,7 @@ Current box ID (if any): {self._current_box_id}
 - DO NOT DECLARE SUCCESS until you have in-app evidence the end state matches the goal (totals updated, item appears with correct fields, label text matches, etc.).
 
 === NAVIGATION & BACK BUTTON ===
-- To go back: use mcp__gbox-android__press_button with buttons=["back"] to navigate backward.
+- To go back: use mcp__GBOX-android__press_button with buttons=["back"] to navigate backward.
 - Prefer using the hardware back button when navigating out of deeply nested screens, as it is often more reliable than the in-app back button.
 - For files that auto-save simply press back button to return to the main screen.
 
@@ -121,12 +121,12 @@ ALWAYS check for apps thoroughly:
 === TASK COMPLETION & CLEANUP ===
 For questions that require a specific answer (like quantities, measurements, or facts):
 1. First call: answer_action(text="the exact answer requested")
-2. Navigate back to the HOME PAGE using mcp__gbox-android__press_button with buttons=["home"]
+2. Navigate back to the HOME PAGE using mcp__GBOX-android__press_button with buttons=["home"]
 3. Then call: finish_task(success=true)
 
 For tasks without specific answers:
 - Only call finish_task(success=true) **after** you verify on-screen that all required fields/labels/amounts are present and correct.
-- **CRITICAL**: Before calling finish_task, ALWAYS navigate back to the HOME PAGE. Every task starts from the home screen, so you MUST end there. Use mcp__gbox-android__press_button with buttons=["home"] to return home.
+- **CRITICAL**: Before calling finish_task, ALWAYS navigate back to the HOME PAGE. Every task starts from the home screen, so you MUST end there. Use mcp__GBOX-android__press_button with buttons=["home"] to return home.
 - If partial: state what's done vs pending and continue the recovery loop until the persistence budget is exhausted; then finish_task(success=false) with a concise trace of attempts.
 
 🏠 MANDATORY FINAL STEP: Return to HOME PAGE before calling finish_task. Do NOT skip this step.
