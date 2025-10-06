@@ -186,7 +186,12 @@ Another challenge is that some tasks are deliberately vague or the UI is designe
 1. Go to [gbox.ai](https://gbox.ai/) and create a box.
 2. Register the Android emulator with [GBOX](https://docs.gbox.ai/cli/register-local-device)
 3. Set up the [GBOX MCP server](https://docs.gbox.ai/docs-mcp/android-mcp-server) locally.
-4. Set up [task_completion_server.py](url) and register the local MCP tool. This tool enables Claude to signal the benchmark when a task has been successfully completed.
-5. Run the setup_box_scale.py script to enable 80% scaling in the box, so all screenshots are automatically resized to that proportion. This is so we don't exceed [Claude image dimension limit.](https://docs.claude.com/en/docs/build-with-claude/vision)
-6. Run the benchmark using the simple_claude agent.
+4. Set up [task_completion_server.py](https://github.com/babelcloud/android_world_benchmark/blob/main/task_completion_server.py) and register the local MCP tool. This tool enables Claude to signal the benchmark when a task has been successfully completed.
+5. Run the [setup_box_scale.py](https://github.com/babelcloud/android_world_benchmark/blob/main/setup_box_scale.py) script to enable 80% scaling in the box, so all screenshots are automatically resized to that proportion. This is so we don't exceed [Claude image dimension limit.](https://docs.claude.com/en/docs/build-with-claude/vision)
+6. Run the benchmark using the [simple_claude_agent](https://github.com/babelcloud/android_world_benchmark/blob/main/android_world/agents/simple_claude_agent.py).
+   ```bash
+python run.py \                                 
+  --suite_family=android_world \
+  --agent_name=simple_claude \
+```
 
