@@ -178,6 +178,11 @@ For the benchmark we used Sonnet 4.5 but some tasks would trigger usage policy i
 
 Another challenge is that some tasks are deliberately vague or the UI is designed to be extremely confusing. For example, in Simple Calendar Pro, a task asks to create an event at “5h,” which Claude interprets as 5pm instead of 5am. These vague statements don’t test navigation or GUI capabilities but are shortcomings in the task descriptions.
 
+## Results
+
+<img width="890" height="489" alt="image" src="https://github.com/user-attachments/assets/7039d927-0c04-469b-9779-84f9d99235e0" />
+
+
 ## How you can also run Android World Benchmark with GBOX MCP
 
 1. Go to [gbox.ai](https://gbox.ai/) and create a box.
