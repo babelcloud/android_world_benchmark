@@ -27,7 +27,7 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
     ):
         super().__init__(env, name, transition_pause)
         self._step_count = 0
-        self._current_box_id = "your_gbox_id"  # Track current Android box ID
+        self._current_box_id = "235bed4d-f606-4335-8cbc-252115048d01"  # Track current Android box ID
         self._client: ClaudeSDKClient | None = None
         self._session_id: str | None = None  # Track session ID for resuming
 
