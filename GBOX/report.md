@@ -2,7 +2,10 @@
 
 ## Introduction
 
-At GBOX, we aimed to demonstrate that providing the right tools can significantly improve the reliability of autonomous agents. By integrating Claude Code with the GBOX MCP, our system achieved an **86% task success rate** on AndroidWorld, a benchmark consisting of 116 mobile automation tasks across commonly used Android applications. AndroidWorld serves as a rigorous validation environment, and these results illustrate how GBOX enables agents to move beyond brittle prototypes toward robust, production-ready automation systems.
+<img width="890" height="489" alt="image" src="https://github.com/user-attachments/assets/7039d927-0c04-469b-9779-84f9d99235e0" />
+<br></br>
+
+At GBOX, we aimed to demonstrate that providing the right tools can significantly improve the reliability of autonomous agents. By integrating Claude Code with the GBOX MCP, our system achieved an **86.2% task success rate** on AndroidWorld, a benchmark consisting of 116 mobile automation tasks across commonly used Android applications. AndroidWorld serves as a rigorous validation environment, and these results illustrate how GBOX enables agents to move beyond brittle prototypes toward robust, production-ready automation systems.
 
 
 ## Why Claude Code + GBOX Made the Difference
@@ -178,17 +181,12 @@ For the benchmark we used Sonnet 4.5 but some tasks would trigger usage policy i
 
 Another challenge is that some tasks are deliberately vague or the UI is designed to be extremely confusing. For example, in Simple Calendar Pro, a task asks to create an event at “5h,” which Claude interprets as 5pm instead of 5am. These vague statements don’t test navigation or GUI capabilities but are shortcomings in the task descriptions.
 
-## Results
-
-<img width="890" height="489" alt="image" src="https://github.com/user-attachments/assets/7039d927-0c04-469b-9779-84f9d99235e0" />
-
-
 ## How you can also run Android World Benchmark with GBOX MCP
 
 1. Go to [gbox.ai](https://gbox.ai/) and create a box.
 2. Register the Android emulator with [GBOX](https://docs.gbox.ai/cli/register-local-device)
 3. Set up the [GBOX MCP server](https://docs.gbox.ai/docs-mcp/android-mcp-server) locally.
-4. Set up task_completion_server.py and register the local MCP tool. This tool enables Claude to signal the benchmark when a task has been successfully completed.
+4. Set up [task_completion_server.py](url) and register the local MCP tool. This tool enables Claude to signal the benchmark when a task has been successfully completed.
 5. Run the setup_box_scale.py script to enable 80% scaling in the box, so all screenshots are automatically resized to that proportion. This is so we don't exceed [Claude image dimension limit.](https://docs.claude.com/en/docs/build-with-claude/vision)
 6. Run the benchmark using the simple_claude agent.
 
