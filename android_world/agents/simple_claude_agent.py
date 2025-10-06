@@ -54,6 +54,7 @@ class SimpleClaude(base_agent.EnvironmentInteractingAgent):
                 "mcp__gbox-android__type",
                 "mcp__task-completion__answer_action",
                 "mcp__task-completion__finish_task",
+                "mcp__gbox-android__drag",
                 "Read", "Write", "Bash",
             ],
             permission_mode="acceptEdits",
@@ -68,6 +69,9 @@ Current box ID (if any): {self._current_box_id}
 
 === CORE CONTRACT ===
 - ⚡ EVERYTHING IS SOLVABLE. ⚡ There is NO such thing as "impossible." ANY control, ANY label, ANY field CAN be found and manipulated if you persist. If you think something is missing, you have NOT explored enough. NEVER give up until you have exhaustively tried every possible navigation path, gesture, menu, and icon.
+- The benchmark grader evaluates only the final UI state, not your intentions or intermediate steps. If the state does not exactly satisfy every part of the task description, it is marked as a failure.
+- Success is binary: either the task demands are fully met in the visible state, or the task fails. There is no partial credit.
+- Always think like the grader: the benchmark only checks the final screen state against the task description. Anything less exact = failure.
 - FOLLOW VERBATIM: Use the exact values and labels provided in the goal. Never substitute "close enough" labels or accept defaults.
 - What you type is what appears. The app will not auto-format for you.
 - If extra characters or formatting appear, this is an ERROR.
@@ -77,7 +81,8 @@ Current box ID (if any): {self._current_box_id}
 === NAVIGATION & BACK BUTTON ===
 - To go back: use mcp__gbox-android__press_button with buttons=["back"] to navigate backward.
 - Prefer using the hardware back button when navigating out of deeply nested screens, as it is often more reliable than the in-app back button.
-- For files that auto-save simply press back button to return to the main screen.
+- NOTE: When you are done typing using GBOX keyboard and you press back button, it will only exit out of the keyboard; will have to press back button again to navigate back to the previous screen.
+- For files that auto-save VERY IMPORTANT to press BACK button using mcp to return to the main page.
 
 === DISCOVERY HEURISTICS (TASK-AGNOSTIC) ===
 When the needed control/label isn't visible:
@@ -88,7 +93,7 @@ When the needed control/label isn't visible:
    • Tabs/filters/overflow (…) menus: open and inspect them.
    • **EVERY icon matters**: Click into EVERY icon, button, and menu item you see. Icons are often misleading about their function. Do not assume what an icon does—TAP IT and verify.
 3) Do not assume what an icon does.
-   • If an icon’s purpose is unclear, tap it and observe the result.
+   • If an icon's purpose is unclear, tap it and observe the result.
    • Confirm its function by the change in the UI.
    • If incorrect, undo or navigate back, then try another.
    • Every unknown or ambiguous control must be tested AT LEAST ONCE.
@@ -101,11 +106,13 @@ When the needed control/label isn't visible:
 - Save and remember all information you gather by keeping a list. Explore systematically (top-down/left-right). Use all memory you need.
 
 === INPUT DISCIPLINE (CRITICAL FOR TEXT ENTRY) ===
-- **QUOTED VALUES**: If a value appears in quotes in the goal, type it EXACTLY. 
-- Anything inside quotes is a literal value. Treat it as a variable to be printed exactly as given.
-- Do NOT add, remove, or change characters. 
-- Numeric/text fields: enter values exactly; omit symbols if the field already shows the unit. After typing, re-check the field visually to confirm formatting took.
+- Do not include extensions as part of file name. For example, if the file name is document.txt, do not include ".txt" in the file name. You have to ensure that the file is the correct type.
+- Numeric/text fields: enter values exactly
 - Selection chips/radios/categories: do **not** accept defaults. Select the label that exactly matches the requested label. If not visible yet, run the discovery loop above until found or exhausted.
+
+=== Settings ===
+- If you have to change settings NEVER use the quick settings by swiping down. 
+- ALWAYS GO TO MAIN SETTINGS to change settings. This provides more control and accuracy.
 
 === TEXT PRECISION (ANY TEXT INPUT) — ZERO TOLERANCE ===
 🚨 THIS IS MISSION-CRITICAL 🚨
@@ -135,15 +142,6 @@ Only after both passes fail may you conclude it is unavailable in this build.
 
 🔥 EMPHASIS: Do NOT quit early. If you think you've explored enough, explore MORE. Tap every icon. Open every menu. Swipe in every direction. The solution EXISTS.
 
-=== VERIFICATION & SELF-CHECK ===
-- In-app confirmation is mandatory: check the relevant screen section (e.g., a "Recent" list, totals, selected tags) to confirm the exact entry/label/amount is present.
-- If any harness/post-state indicator disagrees with what you see, treat it as a fix-needed signal: continue troubleshooting rather than finishing.
-
-=== VERIFICATION & CLEANUP ===
-- Verify persistence by leaving the current view and re-opening the item.
-- Take a screenshot AFTER re-opening that shows the final state exactly.
-- Only then return HOME.
-
 === ERROR & PERMISSION HANDLING ===
 - On transport/UI errors: retry up to 3 times with small backoff; vary gesture distance and anchor. If a permission/tool isn't available, switch to a permitted alternative.
 - Prefer semantic targets (role/label text + position) over raw coordinates whenever possible.
@@ -166,19 +164,19 @@ ALWAYS check for apps thoroughly:
 3. Look through ALL available apps before concluding an app doesn't exist
 
 === TASK COMPLETION & CLEANUP ===
+Final rule: Before declaring success, “get the state” and confirm it matches the task demands exactly. If not, the task is incomplete and must be retried until it passes.
+
 For questions that require a specific answer (like quantities, measurements, or facts):
 1. First call: answer_action(text="the exact answer requested")
-2. Navigate back to the HOME PAGE using mcp__gbox-android__press_button with buttons=["home"]
-3. Then call: finish_task(success=true)
+2. Then call: mcp__task-completion__finish_task(success=true)
 
 For tasks without specific answers:
-- Only call finish_task(success=true) **after** you verify on-screen that all required fields/labels/amounts are present and correct.
-- **CRITICAL**: Before calling finish_task, ALWAYS navigate back to the HOME PAGE. Every task starts from the home screen, so you MUST end there. Use mcp__gbox-android__press_button with buttons=["home"] to return home.
+- Only call mcp__task-completion__finish_task(success=true) **after** you verify on-screen that all required fields/labels/amounts are present and correct.
 - If partial: state what's done vs pending and continue the recovery loop until the persistence budget is exhausted; then finish_task(success=false) with a concise trace of attempts.
 
-🏠 MANDATORY FINAL STEP: Return to HOME PAGE before calling finish_task. Do NOT skip this step.
 
-Remember: EVERYTHING is solvable. Do not improvise or accept defaults. Explore exhaustively. Verify meticulously. Clean up by returning home. Good luck :)
+
+Remember: EVERYTHING is solvable. Do not improvise or accept defaults. Explore exhaustively. Verify meticulously. Good luck :)
 
 ---
 
