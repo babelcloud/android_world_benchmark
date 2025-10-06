@@ -1,15 +1,52 @@
+# How GBOX Became #1 on the AndroidWorld Benchmark with Pure Vision Control
+
 ## Introduction
 
-At GBOX, we aimed to demonstrate that providing the right tools can significantly improve the reliability of autonomous agents. By integrating Claude Code with the GBOX MCP, our system achieved an 88% task success rate on AndroidWorld, a benchmark consisting of 116 mobile automation tasks across commonly used Android applications. AndroidWorld serves as a rigorous validation environment, and these results illustrate how GBOX enables agents to move beyond brittle prototypes toward robust, production-ready automation systems.
+At GBOX, we aimed to demonstrate that providing the right tools can significantly improve the reliability of autonomous agents. By integrating Claude Code with the GBOX MCP, our system achieved an **86% task success rate** on AndroidWorld, a benchmark consisting of 116 mobile automation tasks across commonly used Android applications. AndroidWorld serves as a rigorous validation environment, and these results illustrate how GBOX enables agents to move beyond brittle prototypes toward robust, production-ready automation systems.
 
-## Why GBOX Made the Difference
+
+## Why Claude Code + GBOX Made the Difference
+### GBOX MCP
 
 Traditional Android automation often relies on coordinate-based tapping (e.g., tap(532, 847)), an approach that is highly sensitive to variations in screen sizes, themes, or app updates. [GBOX](https://docs.gbox.ai/api-reference/box/create-android-box)
- supports both coordinate-based input and semantic, natural-language control, giving developers flexibility to choose the modality best suited to the task. For the AndroidWorld benchmark, the GBOX MCP utilized the natural-language mode, enabling agents to reference UI elements by role or label rather than by pixel location. This abstraction reduced brittleness and improved generalization across diverse environments.
+supports both coordinate-based input and semantic, natural-language control, giving developers flexibility to choose the modality best suited to the task. 
 
+The GBOX MCP provides a semantic, natural-language interface that allows AI agents to describe what they want to interact with. This abstraction makes automation far more robust, readable, and transferable across devices and environments.
+
+The MCP exposes a wide range of control primitives:
+```
+mcp__gbox-android__screenshot
+mcp__gbox-android__wait
+mcp__gbox-android__open_app
+mcp__gbox-android__close_app
+mcp__gbox-android__long_press
+mcp__gbox-android__press_button
+mcp__gbox-android__swipe
+mcp__gbox-android__tap
+mcp__gbox-android__type
+mcp__gbox-android__drag
+```
+Each action is issued in natural, grounded language that reflects real-world user behavior:
+```
 tap(target="SAVE button at bottom of form")  
 type(content="Meeting tomorrow at 3pm")  
-swipe(direction="up", distance="medium")  
+swipe(direction="up", distance="medium")
+```
+### Why We Chose a Pure Vision Approach
+
+Most traditional automation frameworks rely on accessibility (A11y) trees or coordinate-based tapping. Both methods work, but only to a point. A11y trees vary wildly between devices and app versions, while coordinate taps break as soon as a layout changes or a theme shifts.
+
+GBOX MCP takes a fundamentally different approach. It’s pure vision — no A11y dependencies, no structural parsing, no hidden metadata. The system perceives what’s actually on screen just as a human would. This design makes it inherently adaptable across form factors, Android builds, and app variations. While most leading systems today use a hybrid “vision + A11y” setup, we demonstrated that a vision-only approach can outperform them in both flexibility and robustness. 
+
+### Claude Code
+
+We used Claude Code not just as a coding assistant, but as a fully capable reasoning agent with strong tool-use abilities. Claude’s ability to interpret natural language, plan multi-step actions, and adapt on the fly made it an excellent companion for GBOX MCP.
+
+In preliminary testing, Claude Code handled complete workflows through GBOX’s interface: opening apps, entering text, scrolling, taking screenshots, and reasoning about visual feedback.
+
+In our [demo](https://www.youtube.com/watch?v=Op3ZSVg-qg8), Claude autonomously compares prices for the Nintendo Switch 2 across eBay, Amazon, and Best Buy, launching each app, typing queries, navigating results, and reading prices, all without hardcoded logic or A11y support.
+
+The takeaway was clear: with GBOX MCP providing the vision and control, and Claude Code supplying the reasoning and context, AI agents can now perform fully visual, multi-step mobile automation in a way that’s robust, generalizable, and remarkably human.
 
 ## Prompt
 <pre>
@@ -21,6 +58,9 @@ Current box ID (if any): {self._current_box_id}
 
 === CORE CONTRACT ===
 - ⚡ EVERYTHING IS SOLVABLE. ⚡ There is NO such thing as "impossible." ANY control, ANY label, ANY field CAN be found and manipulated if you persist. If you think something is missing, you have NOT explored enough. NEVER give up until you have exhaustively tried every possible navigation path, gesture, menu, and icon.
+- The benchmark grader evaluates only the final UI state, not your intentions or intermediate steps. If the state does not exactly satisfy every part of the task description, it is marked as a failure.
+- Success is binary: either the task demands are fully met in the visible state, or the task fails. There is no partial credit.
+- Always think like the grader: the benchmark only checks the final screen state against the task description. Anything less exact = failure.
 - FOLLOW VERBATIM: Use the exact values and labels provided in the goal. Never substitute "close enough" labels or accept defaults.
 - What you type is what appears. The app will not auto-format for you.
 - If extra characters or formatting appear, this is an ERROR.
@@ -28,9 +68,10 @@ Current box ID (if any): {self._current_box_id}
 - DO NOT DECLARE SUCCESS until you have in-app evidence the end state matches the goal (totals updated, item appears with correct fields, label text matches, etc.).
 
 === NAVIGATION & BACK BUTTON ===
-- To go back: use mcp__GBOX-android__press_button with buttons=["back"] to navigate backward.
+- To go back: use mcp__gbox-android__press_button with buttons=["back"] to navigate backward.
 - Prefer using the hardware back button when navigating out of deeply nested screens, as it is often more reliable than the in-app back button.
-- For files that auto-save simply press back button to return to the main screen.
+- NOTE: When you are done typing using GBOX keyboard and you press back button, it will only exit out of the keyboard; will have to press back button again to navigate back to the previous screen.
+- For files that auto-save VERY IMPORTANT to press BACK button using mcp to return to the main page.
 
 === DISCOVERY HEURISTICS (TASK-AGNOSTIC) ===
 When the needed control/label isn't visible:
@@ -41,7 +82,7 @@ When the needed control/label isn't visible:
    • Tabs/filters/overflow (…) menus: open and inspect them.
    • **EVERY icon matters**: Click into EVERY icon, button, and menu item you see. Icons are often misleading about their function. Do not assume what an icon does—TAP IT and verify.
 3) Do not assume what an icon does.
-   • If an icon’s purpose is unclear, tap it and observe the result.
+   • If an icon's purpose is unclear, tap it and observe the result.
    • Confirm its function by the change in the UI.
    • If incorrect, undo or navigate back, then try another.
    • Every unknown or ambiguous control must be tested AT LEAST ONCE.
@@ -54,11 +95,13 @@ When the needed control/label isn't visible:
 - Save and remember all information you gather by keeping a list. Explore systematically (top-down/left-right). Use all memory you need.
 
 === INPUT DISCIPLINE (CRITICAL FOR TEXT ENTRY) ===
-- **QUOTED VALUES**: If a value appears in quotes in the goal, type it EXACTLY. 
-- Anything inside quotes is a literal value. Treat it as a variable to be printed exactly as given.
-- Do NOT add, remove, or change characters. 
-- Numeric/text fields: enter values exactly; omit symbols if the field already shows the unit. After typing, re-check the field visually to confirm formatting took.
+- Do not include extensions as part of file name. For example, if the file name is document.txt, do not include ".txt" in the file name. You have to ensure that the file is the correct type.
+- Numeric/text fields: enter values exactly
 - Selection chips/radios/categories: do **not** accept defaults. Select the label that exactly matches the requested label. If not visible yet, run the discovery loop above until found or exhausted.
+
+=== Settings ===
+- If you have to change settings NEVER use the quick settings by swiping down. 
+- ALWAYS GO TO MAIN SETTINGS to change settings. This provides more control and accuracy.
 
 === TEXT PRECISION (ANY TEXT INPUT) — ZERO TOLERANCE ===
 🚨 THIS IS MISSION-CRITICAL 🚨
@@ -88,15 +131,6 @@ Only after both passes fail may you conclude it is unavailable in this build.
 
 🔥 EMPHASIS: Do NOT quit early. If you think you've explored enough, explore MORE. Tap every icon. Open every menu. Swipe in every direction. The solution EXISTS.
 
-=== VERIFICATION & SELF-CHECK ===
-- In-app confirmation is mandatory: check the relevant screen section (e.g., a "Recent" list, totals, selected tags) to confirm the exact entry/label/amount is present.
-- If any harness/post-state indicator disagrees with what you see, treat it as a fix-needed signal: continue troubleshooting rather than finishing.
-
-=== VERIFICATION & CLEANUP ===
-- Verify persistence by leaving the current view and re-opening the item.
-- Take a screenshot AFTER re-opening that shows the final state exactly.
-- Only then return HOME.
-
 === ERROR & PERMISSION HANDLING ===
 - On transport/UI errors: retry up to 3 times with small backoff; vary gesture distance and anchor. If a permission/tool isn't available, switch to a permitted alternative.
 - Prefer semantic targets (role/label text + position) over raw coordinates whenever possible.
@@ -119,19 +153,19 @@ ALWAYS check for apps thoroughly:
 3. Look through ALL available apps before concluding an app doesn't exist
 
 === TASK COMPLETION & CLEANUP ===
+Final rule: Before declaring success, “get the state” and confirm it matches the task demands exactly. If not, the task is incomplete and must be retried until it passes.
+
 For questions that require a specific answer (like quantities, measurements, or facts):
 1. First call: answer_action(text="the exact answer requested")
-2. Navigate back to the HOME PAGE using mcp__GBOX-android__press_button with buttons=["home"]
-3. Then call: finish_task(success=true)
+2. Then call: mcp__task-completion__finish_task(success=true)
 
 For tasks without specific answers:
-- Only call finish_task(success=true) **after** you verify on-screen that all required fields/labels/amounts are present and correct.
-- **CRITICAL**: Before calling finish_task, ALWAYS navigate back to the HOME PAGE. Every task starts from the home screen, so you MUST end there. Use mcp__GBOX-android__press_button with buttons=["home"] to return home.
+- Only call mcp__task-completion__finish_task(success=true) **after** you verify on-screen that all required fields/labels/amounts are present and correct.
 - If partial: state what's done vs pending and continue the recovery loop until the persistence budget is exhausted; then finish_task(success=false) with a concise trace of attempts.
 
-🏠 MANDATORY FINAL STEP: Return to HOME PAGE before calling finish_task. Do NOT skip this step.
 
-Remember: EVERYTHING is solvable. Do not improvise or accept defaults. Explore exhaustively. Verify meticulously. Clean up by returning home. Good luck :)
+
+Remember: EVERYTHING is solvable. Do not improvise or accept defaults. Explore exhaustively. Verify meticulously. Good luck :)
 
 ---
 
@@ -142,5 +176,19 @@ MINDSET: This benchmark is intentionally difficult. No shortcuts. Explore exhaus
 
 For the benchmark we used Sonnet 4.5 but some tasks would trigger usage policy issues. To handle this, we implemented a fallback to Sonnet 4, which has more relaxed guardrails. The session is persisted during the switch, so Sonnet 4 can continue the task without losing any context. 
 
-Another challenge is that some tasks are deliberately vague or the UI is designed to be extremely confusing, which could potentially be addressed through fine-tuning. For example, in Simple Calendar Pro, a task asks to create an event at “5h,” which Claude interprets as 5pm instead of 5am. These vague statements don’t test navigation or GUI capabilities but are shortcomings in the task descriptions.
+Another challenge is that some tasks are deliberately vague or the UI is designed to be extremely confusing. For example, in Simple Calendar Pro, a task asks to create an event at “5h,” which Claude interprets as 5pm instead of 5am. These vague statements don’t test navigation or GUI capabilities but are shortcomings in the task descriptions.
+
+## Results
+
+<img width="890" height="489" alt="image" src="https://github.com/user-attachments/assets/7039d927-0c04-469b-9779-84f9d99235e0" />
+
+
+## How you can also run Android World Benchmark with GBOX MCP
+
+1. Go to [gbox.ai](https://gbox.ai/) and create a box.
+2. Register the Android emulator with [GBOX](https://docs.gbox.ai/cli/register-local-device)
+3. Set up the [GBOX MCP server](https://docs.gbox.ai/docs-mcp/android-mcp-server) locally.
+4. Set up task_completion_server.py and register the local MCP tool. This tool enables Claude to signal the benchmark when a task has been successfully completed.
+5. Run the setup_box_scale.py script to enable 80% scaling in the box, so all screenshots are automatically resized to that proportion. This is so we don't exceed [Claude image dimension limit.](https://docs.claude.com/en/docs/build-with-claude/vision)
+6. Run the benchmark using the simple_claude agent.
 
